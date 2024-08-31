@@ -36,3 +36,31 @@
     transform: rotate(360deg);
   }
 }
+
+
+/* Additional styles for NavbarComponent */
+.navbar-brand {
+  display: flex;
+  align-items: center;
+}
+
+.navbar-brand img {
+  height: 40px; /* Adjust as needed */
+  margin-right: 10px; /* Space between logo and text */
+}
+
+.navbar-item {
+  padding: 0 15px; /* Space around each item */
+}
+
+/* Adjust styling for links and buttons if necessary */
+a {
+  text-decoration: none;
+}
+
+button {
+  border: none;
+  background-color: transparent;
+}
+
+
