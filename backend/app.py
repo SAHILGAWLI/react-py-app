@@ -1,9 +1,10 @@
-from flask import Flask, jsonify, request, send_from_directory, abort
+from flask import Flask, jsonify, request, send_from_directory, abort, send_file,  render_template , redirect, url_for, flash
 from flask_cors import CORS
 import os
 import cv2
 import pytesseract
 import numpy as np
+import time
 import img2pdf
 import platform
 from flask_socketio import SocketIO
@@ -18,8 +19,8 @@ if platform.system() == "Windows":
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Directories
-UPLOAD_FOLDER = 'static/uploads'
-FRAME_DIR = 'static/frames'
+UPLOAD_FOLDER = './backend/static/uploads'
+FRAME_DIR = './backend/static/frames'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(FRAME_DIR, exist_ok=True)
 
@@ -30,11 +31,23 @@ MIN_LAP_VAR = 100
 SSIM_THRESHOLD = 0.9
 RESIZE_WIDTH = 800
 
+def safe_remove(file_path):
+    try:
+        os.remove(file_path)
+    except PermissionError:
+        # If the file is still in use, wait and retry
+        time.sleep(1)
+        try:
+            os.remove(file_path)
+        except PermissionError:
+            print(f"Unable to delete file: {file_path} because it is still in use.")
+
+
 def clear_directory(directory):
     for filename in os.listdir(directory):
         file_path = os.path.join(directory, filename)
         if os.path.isfile(file_path):
-            os.remove(file_path)
+            safe_remove(file_path)
 
 def extract_frames(video_file_path: str):
     vidcap = cv2.VideoCapture(video_file_path)
@@ -77,6 +90,8 @@ def extract_frames(video_file_path: str):
         success, image = vidcap.read()
         prev_image_resized = image_resized.copy() if image is not None else None
 
+    vidcap.release()
+
     ocr_text = ''
     for i in range(count):
         frame_path = os.path.join(FRAME_DIR, f'frame_{i}.jpg')
@@ -87,13 +102,17 @@ def extract_frames(video_file_path: str):
         cv2.imwrite(doc_path, document.astype(np.uint8))
 
     pdf_path = os.path.join(FRAME_DIR, 'output.pdf')
+   
     try:
-        with open(pdf_path, 'w+b') as f:
-            f.write(img2pdf.convert([open(os.path.join(FRAME_DIR, f'document_{i}.jpg'), 'rb') for i in range(count)]))
-    except ValueError:
-        raise ValueError("Unable to process empty list: the uploaded field is invalid.")
+     with open(pdf_path, 'w+b') as f:
+        f.write(img2pdf.convert([open(os.path.join(FRAME_DIR, f'document_{i}.jpg'), 'rb') for i in range(count)]))
+     print(f"PDF successfully created at {pdf_path}")
+     return pdf_path, ocr_text
 
-    return pdf_path, ocr_text
+    except ValueError:
+      print("Error: Unable to process the list of images for PDF conversion.")
+    raise ValueError("Unable to process empty list: the uploaded field is invalid.")
+   
 
 def extract_document(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -114,6 +133,7 @@ def extract_document(image):
 
 @app.route('/api/upload', methods=['POST'])
 def upload():
+    print("Received request at /api/upload")
     # Clear the frames directory at the start
     clear_directory(FRAME_DIR)
 
@@ -127,17 +147,43 @@ def upload():
     
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(file_path)
-    
+
     pdf_path, ocr_text = extract_frames(file_path)
-    
-    # Remove the uploaded file after processing
-    os.remove(file_path)
+      
     
     # Clear the uploads directory after processing
     clear_directory(UPLOAD_FOLDER)
+     
+     
+    try:
+        # Assuming successful file handling and PDF generation
+        return jsonify({'pdf_url': '/success'})  # Redirect to success page
+    
+    except Exception as e:
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 400
     
     return jsonify({'status': 'success', 'pdf_url': f'/static/frames/output.pdf', 'ocr_text': ocr_text})
 
+
+# Make sure the 'download_pdf' route is defined correctly and pointing to the right file path
+
+@app.route('/download_pdf', methods=['GET'])
+def download_pdf():
+    # Define the path to the PDF file
+    pdf_path = os.path.join(app.root_path, 'static', 'frames', 'output.pdf')
+    
+    # Check if the PDF file exists
+    if not os.path.exists(pdf_path):
+        return "File not found!", 404
+    
+    # Send the file to the client
+    return send_file(pdf_path, as_attachment=True)
+
+
+@app.route('/static/frames/<path:filename>')
+def serve_file(filename):
+    return send_from_directory('static/frames', filename)       
+ 
 @app.route('/')
 def serve_index():
     return send_from_directory(app.static_folder, 'index.html')
