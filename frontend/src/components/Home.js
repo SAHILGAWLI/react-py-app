@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import './Home.css'; // Import the CSS file for styling
 
 const Home = () => {
     const [selectedFile, setSelectedFile] = useState(null);
     const [error, setError] = useState('');
+    const navigate = useNavigate();
+
 
     const validateForm = (event) => {
         event.preventDefault();
@@ -45,7 +49,7 @@ const Home = () => {
             const result = await response.json();
 
             if (response.ok) {
-                window.location.href = result.pdf_url; // Adjusted to match backend response
+                navigate('/success');  // Navigate to SuccessPage
             } else {
                 setError(result.message || 'An error occurred. Please try again.');
             }
